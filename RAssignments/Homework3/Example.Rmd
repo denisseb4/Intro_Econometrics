@@ -1,0 +1,31 @@
+---
+title: "Homework Three Example"
+author: "2Lt., Mark G. Sheppard, M.A., M.P.P., Ph.D. (2025)"
+date: "2023-09-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# LOADING LIBRARY
+library(readxl)
+library(tidyverse)
+library(stargazer)
+
+#IMPORT DATA
+df <- read_excel("C:\\Users\\denis\\Downloads\\Lecture2Example.xls", skip = 13)
+
+# RENAMES COLUMNS
+df$DATE <- df$observation_date
+df$UNEMP <- df$UNRATE
+df$CPI <- df$CORESTICKM159SFRBATL
+df$FDP <- df$GDPC1_PCH
+df$DEBT <- df$GFDEGDQ188S
+
+# SUBSETS THE REDUNDANT COLUMNS 
+df <- df[,-2:-6]
+#df <- df[,6:11]
+
+# Linear Model And Resuls
+linearmodel_1 <- lm(df$UNEMP ~ df$CPI + df$FDP + df$DEBT)
+stargazer(linearmodel_1, title="Results", type="text", align=TRUE)
+```

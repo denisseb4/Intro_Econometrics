@@ -1,0 +1,242 @@
+---
+title: "Replication File"
+author: "Mark G. Sheppard"
+---
+
+```{r setup, include=FALSE}
+# LOAD PACKAGES
+if(!require(tidyverse)){install.packages("tidyverse", dependencies = TRUE); library(tidyverse, quietly = TRUE)}
+if(!require(rstudioapi)){install.packages("rstudioapi", dependencies = TRUE); library(rstudioapi, quietly = TRUE)}
+
+# IMPORT PACKAGES FOR PYTHON
+if(!require(reticulate)){install.packages("reticulate", dependencies = TRUE); library(reticulate, quietly = TRUE)}
+
+# IMPORT PACKAGES FOR STRUCTURAL BREAKS 
+if(!require(zoo)){install.packages("zoo", dependencies = TRUE); library(zoo, quietly = TRUE)}
+if(!require(sandwich)){install.packages("sandwich", dependencies = TRUE); library(sandwich, quietly = TRUE)}
+if(!require(strucchange)){install.packages("strucchange", dependencies = TRUE); library(strucchange, quietly = TRUE)}
+if(!require(readxl)){install.packages("readxl", dependencies = TRUE); library(readxl, quietly = TRUE)}
+
+# IMPORT FRED API PACKAGES 
+if(!require(fredr)){install.packages("fredr", dependencies = TRUE); library(fredr, quietly = TRUE)}
+fredr_set_key("6352ad3b393d3ab83709630e61d2b14e")
+
+#CLEAR CONSOLE
+cat("\014")
+```
+
+```{r}
+# DOWNLOAD PYTHON PACKAGES INTO R
+conda_install(packages = "requests")
+conda_install(packages = "pandas")
+conda_install(packages = "numpy")
+conda_install(packages = "time")
+conda_install(packages = "urllib3")
+```
+
+## This Loads Packages in a Python Enviroment Within R-Studio
+Since R and Python share a similar base language, the following code will allow you to load packages in Python within the R enviroment.
+
+```{python, include=FALSE}
+# IMPORT PACKAGES FOR PYTHON
+import requests
+import os
+import pandas as pd
+import numpy as np
+import urllib
+import time
+```
+
+## This Establishes The Directory for Navigation 
+This code will create a folder with three separate sub-folders. Changing the below strings will alter the name of the folders and location of the folders. This folder will then be made into the working directory
+
+```{r directory, include=FALSE}
+##### CHNGE FOR PC #####
+
+
+
+# SET DIRECTORY WITH NAMES OF FOLDERS
+directory <- list("~/Desktop", "/Replication", "/Results", "/Code", "/Data")
+
+#CLEAR CONSOLE
+cat("\014")
+```
+
+## Creates Sub-Directory, Copies Current File, Renames/Relocates Code in Folder
+Creates Sub-Directory, Copies Current File, Renames/Relocates Code in Folder
+
+```{r pressure, echo=FALSE, include=FALSE}
+# EXTRACT CURRENT FILENAME
+filename <-gsub(".*/","",documentPath()) # Extracts filename 
+
+# DELETE OLD WORK
+unlink(paste(directory[1],directory[2],sep=""), recursive = TRUE)
+
+#CREATES BASE DIRECTORY
+dir.create(paste(directory[1],directory[2],sep=""))
+
+#CREATES SUB DIRECTORY
+dir.create(paste(directory[1],directory[2],directory[3],sep=""))
+dir.create(paste(directory[1],directory[2],directory[4],sep=""))
+dir.create(paste(directory[1],directory[2],directory[5],sep=""))
+
+# MOVE FILE TO DIRECTORY
+file.copy(from = filename, 
+          to = paste(directory[1],directory[2],directory[4],"/",sep=""))
+
+# RENAME CODE FILE
+file.rename(from = paste(directory[1],directory[2],directory[4], "/", filename, sep=""), 
+            to = paste(directory[1],directory[2],directory[4],"/", "code.Rmd",sep=""))
+
+# CLEAR ENVIROMENT
+#rm(directory, filename)
+
+# CLEAR CONSOLE
+cat("\014")
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{python, include=FALSE}
+# Calculate Time to Source Data
+start = time.time()
+
+# Source Data
+psz_url = 'http://gabriel-zucman.eu/files/PSZ2018MainData.xlsx'
+as_url = 'http://davidsplinter.com/AutenSplinter-IncomeIneq.xlsx'
+urllib.request.urlretrieve(psz_url, "piketty-saez-zucman.xlsx")
+urllib.request.urlretrieve(as_url, "auten-splinter.xlsx")
+
+# Print the Time Required to Source Data
+end = time.time()
+print("Downloading the data required", (end - start), "seconds.")
+```
+
+```{r, include=FALSE}
+# MOVE FILE TO DIRECTORY
+file.copy(from = "auten-splinter.xlsx", 
+          to = paste(directory[1],directory[2],directory[5],"/",sep=""))
+
+# MOVE FILE TO DIRECTORY
+file.copy(from = "piketty-saez-zucman.xlsx", 
+          to = paste(directory[1],directory[2],directory[5],"/",sep=""))
+```
+
+```{python, include=FALSE}
+# Calculate Time to Download Data
+start_ = time.time()
+
+# Clean Data and Store as Pandas Object
+psz_df = pd.read_excel(psz_url, 'Data', usecols=('A:AN, AQ:BJ, BM:CY, DB:EO, EQ:FY, GA:GN, GQ:HD, HG:HR, HT:IM, IO:IP, IS:JE, JG:JO'), header=[2]).drop([0,1]).rename(columns={"Series": "Year"})
+psz_df.drop(psz_df.tail(11).index,inplace=True)
+as_df = pd.read_excel(as_url, 'F-A1', header=[32], usecols=('A:E, G:J')).rename(columns={'Unnamed: 0': "Year"}).drop([56,57])
+
+# Print the Time Required to Download Data
+end_ = time.time()
+print("Cleaning the data required", (end_ - start_), "seconds.")  
+```
+
+```{python, include=FALSE}
+# Merge the Data
+df = psz_df.merge(as_df, how='outer')
+print("Merge complete") 
+```
+
+```{r, include=FALSE}
+# Store Python Object as a R Object
+df_full <- as.vector(py$df) # Saves Python Object as R
+df_full <- df_full[1:102,] # Cuts off last observations
+```
+
+```{r, include=FALSE}
+# Subset the Data
+df <- df_full %>% 
+  rename("value"= `Memo: Top 10% fiscal income per tax unit, incl. KG`, 
+         "time" = Year) %>%
+  select(time, value) %>% 
+  filter(!is.na(value)) %>% 
+  mutate(value = value*100) #Represent Decimals as Whole Numbers
+```
+
+```{r, include=FALSE}
+# Source Tax Data from FRED, with API 
+tax <- fredr(series_id = "IITTRHB",observation_start = as.Date("1913-01-01"),
+             observation_end = as.Date("2014-01-01"), frequency = "a")
+```
+
+```{r, include=FALSE}
+# Define 2 Break Points in Tax Data
+bp_tax <- breakpoints(tax$value ~ 1, breaks = 2)
+
+# Define 2 Break Points in Inequality Data
+bp <- breakpoints(df$value ~ 1, breaks = 2)
+
+# Alternatively To Set No Amount of Breaks
+# bp <- breakpoints(df$value ~ 1)
+
+# Unlist the Data
+df$time <- unlist(df$time)
+
+# PLot The Data
+tax_plot <- ggplot(df, aes(x = unlist(time), y = value, group = 1)) +
+  # Plot Data
+  geom_line(color="#00B2D9") +
+  # Color of Main Line"R Working File/test.xlsx"
+  ggtitle("Top 10% Income Share") +
+  xlab("Year") + 
+  ylab("Income Share in Percentage") +
+  # Labels
+  theme_minimal() +
+  # Basic Theme
+  scale_x_discrete(labels = pretty(df$time, n = 15)) +
+  # X Axis Tick Amount
+  theme(axis.text.y = element_text(angle=0, size=7)) +
+  # Axis Font Size and Angles
+  theme(axis.text.x = element_text(angle=90, hjust=1, size=7),
+        panel.grid.major.x = element_blank(),
+        panel.grid.major.y = element_line(linetype = "dotted"), 
+        panel.grid.minor.y = element_line(linetype = "dotted")) +
+  # Add Note
+  annotate("text", x = 1960, y = 36, label = "Postwar Era", vjust = -0.5, size=3, col = 'dark grey') +
+  # Plot Structural Breaks
+  geom_vline(data = tibble(breakpoints = df$time[bp$breakpoints]), 
+             aes(xintercept = breakpoints), linetype='dotted', col = '#00809C') +
+  geom_vline(data = tibble(breakpoints = df$time[bp_tax$breakpoints + 4]), #Added a lead of 4 Years
+             aes(xintercept = breakpoints), col = '#858585', linetype='solid') +
+  geom_hline(yintercept = 30, size = .1) +
+  scale_x_yearqtr(format = "%Y") 
+
+```
+
+
+```{r}
+# PRINT GRAPH
+tax_plot
+
+# SAVE PLOT IN RESULTS FOLDER
+ggsave(paste(directory[1],directory[2],directory[3],"/", "tax_plot.pdf",sep=""), 
+       width = 7, height = 4)
+```
+
+```{r, warning=FALSE}
+# LOAD PACKAGES
+if(!require(stargazer)){install.packages("stargazer", dependencies = TRUE); library(stargazer, quietly = TRUE)}; cat("\014")
+
+# CREATE NEW VARIABLES
+df_full$`Log of Top 1%` <- log(df_full$`Top 1% pre-tax share equal-split`)
+df_full$`Log of Top 0.1%` <- log(df_full$`Top 0.1% pre-tax equal split`)
+
+#RUN AND SAVE REGRESSION
+homework_one_model_one <- lm(df_full$`Log of Top 1%` ~ tax$value)
+homework_one_model_two <- lm(df_full$`Log of Top 0.1%` ~ tax$value)
+
+#PRINT WITH STARGAZER
+stargazer::stargazer(homework_one_model_one, homework_one_model_two, type="text", 
+                     rownames = TRUE, covariate.labels=c("Tax Rate on Upper Incomes")); cat("\014")
+
+# PRINT SINGLE VALUE
+matrix_coef <- summary(homework_one_model_one)$coefficients
+matrix_coef[2, 1]
+```
+
+
